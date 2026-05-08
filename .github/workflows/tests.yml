@@ -36,7 +36,7 @@ jobs:
             driver: "psycopg[binary]>=3"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Skip push-only entries on PRs
         if: matrix.push-only && github.event_name == 'pull_request'
@@ -45,7 +45,7 @@ jobs:
           exit 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -54,15 +54,18 @@ jobs:
           DJANGO_VERSION: ${{ matrix.django }}
           DRIVER: ${{ matrix.driver }}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
-          python -m pip install "Django~=${DJANGO_VERSION}.0"
-          python -m pip uninstall -y psycopg psycopg-binary psycopg2 psycopg2-binary || true
-          python -m pip install "${DRIVER}"
+          python -m pip install --upgrade --quiet pip
+          python -m pip install --quiet -e ".[test]"
+          python -m pip install --quiet "Django~=${DJANGO_VERSION}.0"
+          # Quiesce the noisy "Skipping <pkg> as it is not installed" lines —
+          # we deliberately uninstall every flavor regardless of which is
+          # currently installed, then reinstall exactly the matrix one.
+          python -m pip uninstall -y -q psycopg psycopg-binary psycopg2 psycopg2-binary 2>/dev/null || true
+          python -m pip install --quiet "${DRIVER}"
 
       - name: Lint
         run: |
-          python -m pip install ruff
+          python -m pip install --quiet ruff
           ruff check src/ tests/
           ruff format --check src/ tests/
 
@@ -70,6 +73,9 @@ jobs:
         run: pytest -v
 
   integration:
+    # Runs the docker-only test layer (rebuild + end-to-end fake project,
+    # see SPEC §8 layer 2). Until those tests are written, the job
+    # collects zero tests — pytest exits 5, which we treat as success.
     name: integration (rebuild + e2e)
     runs-on: ubuntu-latest
     services:
@@ -87,22 +93,30 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
+          python -m pip install --upgrade --quiet pip
+          python -m pip install --quiet -e ".[test]"
 
-      - name: Run integration tests
-        run: pytest -v -m requires_docker
+      - name: Run integration tests (allow exit 5 = no tests collected)
         env:
           PGHOST: localhost
           PGPORT: "5432"
           PGUSER: postgres
           PGPASSWORD: postgres
+        run: |
+          set +e
+          pytest -v -m requires_docker
+          rc=$?
+          if [ $rc -eq 5 ]; then
+            echo "::notice::No requires_docker tests collected — passing."
+            exit 0
+          fi
+          exit $rc
