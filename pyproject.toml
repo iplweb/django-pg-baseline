@@ -1,0 +1,114 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "django-pg-baseline"
+version = "0.1.0"
+description = "Manage a baseline pg_dump for Django test databases — turn N-minute migrate boots into a few-second psql import."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Michał Pasternak", email = "michal.dtz@gmail.com" },
+]
+keywords = [
+    "django",
+    "postgres",
+    "postgresql",
+    "pg_dump",
+    "testing",
+    "pytest",
+    "testcontainers",
+    "migrations",
+    "baseline",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+dependencies = [
+    "Django>=5.0",
+    "testcontainers[postgres]>=4.14.2",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7",
+    "pytest-django>=4.8",
+    "psycopg[binary]>=3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/iplweb/django-pg-baseline"
+Repository = "https://github.com/iplweb/django-pg-baseline"
+Issues = "https://github.com/iplweb/django-pg-baseline/issues"
+Changelog = "https://github.com/iplweb/django-pg-baseline/blob/main/CHANGELOG.md"
+
+[project.entry-points.pytest11]
+django_pg_baseline = "django_pg_baseline.pytest_plugin"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/django_pg_baseline",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/django_pg_baseline"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long — formatter handles it
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B", "ARG"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "requires_docker: integration tests that need a Docker daemon",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

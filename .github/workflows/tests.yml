@@ -1,0 +1,110 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (py${{ matrix.python }} / dj${{ matrix.django }} / ${{ matrix.driver }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+        django: ["5.1", "5.2"]
+        driver: ["psycopg2-binary", "psycopg[binary]>=3"]
+        include:
+          - push-only: true
+            python: "3.11"
+            django: "5.0"
+            driver: "psycopg[binary]>=3"
+          - push-only: true
+            python: "3.12"
+            django: "5.1"
+            driver: "psycopg2-binary"
+          - push-only: true
+            python: "3.12"
+            django: "5.2"
+            driver: "psycopg[binary]>=3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip push-only entries on PRs
+        if: matrix.push-only && github.event_name == 'pull_request'
+        run: |
+          echo "Push-only matrix entry — skipping on PR."
+          exit 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        env:
+          DJANGO_VERSION: ${{ matrix.django }}
+          DRIVER: ${{ matrix.driver }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install "Django~=${DJANGO_VERSION}.0"
+          python -m pip uninstall -y psycopg psycopg-binary psycopg2 psycopg2-binary || true
+          python -m pip install "${DRIVER}"
+
+      - name: Lint
+        run: |
+          python -m pip install ruff
+          ruff check src/ tests/
+          ruff format --check src/ tests/
+
+      - name: Unit tests
+        run: pytest -v
+
+  integration:
+    name: integration (rebuild + e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Run integration tests
+        run: pytest -v -m requires_docker
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: postgres
