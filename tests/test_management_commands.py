@@ -9,6 +9,7 @@ import pytest
 from django.core.management import call_command
 
 from django_pg_baseline.conf import BaselineConfig
+from django_pg_baseline.management.commands import baseline_check as cmd_check
 from django_pg_baseline.management.commands import baseline_info as cmd_info
 from django_pg_baseline.management.commands import baseline_load as cmd_load
 from django_pg_baseline.management.commands import baseline_rebuild as cmd_rebuild
@@ -16,6 +17,7 @@ from django_pg_baseline.management.commands import baseline_update as cmd_update
 
 
 def _patch_config(monkeypatch, cfg):
+    monkeypatch.setattr(cmd_check, "get_config", lambda: cfg)
     monkeypatch.setattr(cmd_info, "get_config", lambda: cfg)
     monkeypatch.setattr(cmd_load, "get_config", lambda: cfg)
     monkeypatch.setattr(cmd_rebuild, "get_config", lambda: cfg)
@@ -219,9 +221,7 @@ def test_baseline_update_errors_when_sql_missing(tmp_path, monkeypatch):
     _patch_config(monkeypatch, cfg)
 
     update_calls = []
-    monkeypatch.setattr(
-        cmd_update, "update_baseline", lambda c: update_calls.append(c)
-    )
+    monkeypatch.setattr(cmd_update, "update_baseline", lambda c: update_calls.append(c))
 
     with pytest.raises(CommandError, match="run `manage.py baseline_rebuild`"):
         call_command("baseline_update", stdout=StringIO())
@@ -235,7 +235,124 @@ def test_baseline_update_image_override(tmp_baseline_dir, monkeypatch, fake_sql_
     calls = []
     monkeypatch.setattr(cmd_update, "update_baseline", lambda c: calls.append(c))
 
-    call_command(
-        "baseline_update", "--image", "postgres:17", stdout=StringIO()
-    )
+    call_command("baseline_update", "--image", "postgres:17", stdout=StringIO())
     assert calls[0].rebuild_image == "postgres:17"
+
+
+def test_baseline_check_errors_when_sql_missing(tmp_path, monkeypatch):
+    from django.core.management.base import CommandError
+
+    cfg = BaselineConfig(baseline_dir=tmp_path)
+    _patch_config(monkeypatch, cfg)
+
+    with pytest.raises(CommandError, match="baseline.sql is missing"):
+        call_command("baseline_check", stdout=StringIO())
+
+
+def test_baseline_check_errors_when_meta_missing(
+    tmp_baseline_dir, monkeypatch, fake_sql_file
+):
+    from django.core.management.base import CommandError
+
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    _patch_config(monkeypatch, cfg)
+
+    with pytest.raises(CommandError, match="baseline.meta.json is missing"):
+        call_command("baseline_check", stdout=StringIO())
+
+
+def test_baseline_check_no_threshold_exits_zero(
+    tmp_baseline_dir, monkeypatch, fake_meta_dict, fake_sql_file
+):
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    cfg.meta_path.write_text(json.dumps(fake_meta_dict))
+    _patch_config(monkeypatch, cfg)
+
+    from django_pg_baseline import freshness as freshness_module
+
+    monkeypatch.setattr(
+        freshness_module,
+        "collect_disk_migrations",
+        lambda: {
+            "myapp": ["0050_initial", "0051_x", "0052_y", "0053_z"],
+            "auth": ["0012_alter_user"],
+        },
+    )
+
+    out = StringIO()
+    call_command("baseline_check", stdout=out)
+    text = out.getvalue()
+    assert "worst_delta: 3 (myapp)" in text
+    assert "Baseline freshness OK" in text
+
+
+def test_baseline_check_under_threshold_exits_zero(
+    tmp_baseline_dir, monkeypatch, fake_meta_dict, fake_sql_file
+):
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    cfg.meta_path.write_text(json.dumps(fake_meta_dict))
+    _patch_config(monkeypatch, cfg)
+
+    from django_pg_baseline import freshness as freshness_module
+
+    monkeypatch.setattr(
+        freshness_module,
+        "collect_disk_migrations",
+        lambda: {"myapp": ["0050_initial", "0051_x"]},
+    )
+
+    out = StringIO()
+    call_command("baseline_check", "--max-delta", "5", stdout=out)
+    text = out.getvalue()
+    assert "max_delta:   5" in text
+    assert "Baseline freshness OK" in text
+
+
+def test_baseline_check_over_threshold_raises(
+    tmp_baseline_dir, monkeypatch, fake_meta_dict, fake_sql_file
+):
+    from django.core.management.base import CommandError
+
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    cfg.meta_path.write_text(json.dumps(fake_meta_dict))
+    _patch_config(monkeypatch, cfg)
+
+    from django_pg_baseline import freshness as freshness_module
+
+    monkeypatch.setattr(
+        freshness_module,
+        "collect_disk_migrations",
+        lambda: {
+            "myapp": [
+                "0050_initial",
+                "0051_x",
+                "0052_y",
+                "0053_z",
+                "0054_w",
+                "0055_v",
+            ],
+        },
+    )
+
+    with pytest.raises(CommandError, match="exceeds --max-delta=2"):
+        call_command("baseline_check", "--max-delta", "2", stdout=StringIO())
+
+
+def test_baseline_check_at_threshold_exits_zero(
+    tmp_baseline_dir, monkeypatch, fake_meta_dict, fake_sql_file
+):
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    cfg.meta_path.write_text(json.dumps(fake_meta_dict))
+    _patch_config(monkeypatch, cfg)
+
+    from django_pg_baseline import freshness as freshness_module
+
+    monkeypatch.setattr(
+        freshness_module,
+        "collect_disk_migrations",
+        lambda: {"myapp": ["0050_initial", "0051_x", "0052_y"]},
+    )
+
+    out = StringIO()
+    call_command("baseline_check", "--max-delta", "2", stdout=out)
+    assert "Baseline freshness OK" in out.getvalue()

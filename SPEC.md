@@ -176,6 +176,7 @@ time-of-use bugs when multiple call sites read the same config.
 | --- | --- |
 | `baseline_load` | Load `baseline.sql` into the configured DB. Skips when `django_migrations` already exists, unless `--force`. Flags: `--database <alias>`, `--force`. |
 | `baseline_info` | Human summary: git SHA, PG version, sql/meta paths, plus per-app deltas (computed via `MigrationLoader.graph`, so `replaces=` squashes are counted correctly). Always exits 0 — informational, no gating. |
+| `baseline_check` | Same delta computation as `baseline_info`, formatted for grep-friendly CI output. Always exits 0 by default; with `--max-delta N` exits 1 when any per-app delta exceeds `N`. Pure Python diff against `baseline.meta.json` — runs in milliseconds, no rebuild required. Flags: `--max-delta <int>`. |
 | `baseline_rebuild` | Regenerate `baseline.sql` + `baseline.meta.json`. Spins a `testcontainers` PG, runs `migrate`, freezes timestamps, runs in-container `pg_dump`, scrubs, writes meta. Flags: `--image <ref>`, `--baseline-dir <path>`. |
 
 All commands instantiate via `get_config()` and respect overrides
@@ -731,7 +732,7 @@ relevant sections as decisions. This log is the single index:
 | Integration tests on PR forks | Run on every push and PR (Linux GHA runners have Docker) | §8 layer 2 |
 | `_scrub_dump` maintenance | Treated as a living list; new PG majors will add directives we'll keep up with | §5 Mode C |
 | `[rebuild]` extra | Dropped — `testcontainers[postgres]` is a regular runtime dep, rebuild is core not opt-in | §6 |
-| Freshness gate / `FRESHNESS_MAX_DELTA` | Removed — when to rebuild is the project's call, not the package's. `baseline_check` command dropped; `baseline_info` still shows per-app deltas, informational only | §1, §3.2 |
+| Freshness gate / `FRESHNESS_MAX_DELTA` | No package-level gate; `baseline_check --max-delta N` is opt-in CI tooling. Default is informational (exits 0); the threshold is per-project and lives in CI config, not settings | §1, §3.2 |
 | `pg_terminate_backend` privileges | Satisfied automatically in Mode B (testcontainers superuser); Mode A users must grant `pg_signal_backend` role to the test DB user | §4.1 |
 | `BPP_BASELINE_SQL_PATH` rename | Clean cut to `DJANGO_PG_BASELINE_SQL_PATH`; no deprecation shim — the old name leaves the codebase together with the extraction | §4.2, §4.3, §11 |
 

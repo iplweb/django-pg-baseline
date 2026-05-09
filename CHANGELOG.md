@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-09
+
+### Added
+
+- `baseline_check` management command. Prints the per-app freshness
+  delta (same data as `baseline_info`, in CI-friendly format). Exits 0
+  by default; with `--max-delta N` exits 1 when any app's delta
+  exceeds `N` — useful as a CI guard that nudges the team to run
+  `baseline_update` once drift crosses a threshold. Pure Python diff
+  against `baseline.meta.json` (no rebuild required, runs in
+  milliseconds).
+
 ## [0.2.0] - 2026-05-09
 
 ### Added
@@ -52,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_django_pg_baseline_seeded` marker on `DATABASES['default']['TEST']`
   — explicit coordination flag with `pytest-testcontainers-django`.
 
-[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/iplweb/django-pg-baseline/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/iplweb/django-pg-baseline/releases/tag/v0.1.0

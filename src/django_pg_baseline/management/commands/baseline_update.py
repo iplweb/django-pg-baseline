@@ -44,9 +44,7 @@ class Command(BaseCommand):
                 f"baseline_update requires an existing {config.sql_path}; "
                 f"run `manage.py baseline_rebuild` first to create it."
             )
-        self.stdout.write(
-            f"Updating baseline using image {config.rebuild_image}..."
-        )
+        self.stdout.write(f"Updating baseline using image {config.rebuild_image}...")
         update_baseline(config)
         self.stdout.write(self.style.SUCCESS("Baseline updated."))
         self.stdout.write(f"  sql:  {config.sql_path}")
