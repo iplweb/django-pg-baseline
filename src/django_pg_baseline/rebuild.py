@@ -7,6 +7,22 @@ configurable timestamp columns, runs ``pg_dump`` *inside* the
 container (to guarantee client/server major-version match), scrubs
 PG-version-specific lines, and writes ``baseline.sql`` +
 ``baseline.meta.json``.
+
+Two entry points share this pipeline:
+
+- :func:`rebuild_baseline` — full reset. Runs ``migrate`` against an
+  empty DB, capturing whatever auto-increment IDs ``post_migrate``
+  happens to assign. Use when starting from scratch or recovering from
+  a corrupted baseline.
+
+- :func:`update_baseline` — incremental. Loads the existing
+  ``baseline.sql`` into the testcontainer *before* ``migrate``, so
+  Django's ``post_migrate`` (via ``update_contenttypes`` /
+  ``create_permissions``, both built on ``get_or_create``) preserves
+  the IDs of rows already present in the dump. Only genuinely-new
+  permissions / content_types added by new migrations get fresh
+  sequential IDs. This produces minimal git diffs on routine baseline
+  refresh after adding migrations.
 """
 
 from __future__ import annotations
@@ -15,6 +31,7 @@ import dataclasses
 import logging
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from .conf import BaselineConfig
@@ -73,6 +90,55 @@ def _validate_pg_dump_in_container(container_id: str) -> None:
             "Pick an image that ships PostgreSQL client tools "
             f"(stderr: {stderr.strip()})."
         ) from exc
+
+
+def _load_baseline_into_container(
+    container_id: str, db: dict, sql_path: Path
+) -> None:
+    """Stream a baseline SQL file into the container's PG via ``psql`` stdin.
+
+    Used by :func:`update_baseline` to seed the testcontainer with the
+    prior dump before running ``migrate``. Streaming via stdin avoids
+    the two-step ``docker cp`` + ``docker exec`` dance and keeps the
+    file off the container filesystem.
+
+    psql output (rows of ``SET``, ``setval``, etc.) is captured and
+    re-emitted to stderr only if the command fails — avoids the wall
+    of result rows on success.
+    """
+    cmd = [
+        "docker",
+        "exec",
+        "-i",
+        "-e",
+        f"PGPASSWORD={db.get('PASSWORD') or ''}",
+        container_id,
+        "psql",
+        "-h",
+        "localhost",
+        "-p",
+        "5432",
+        "-U",
+        str(db["USER"]),
+        "-d",
+        str(db["NAME"]),
+        "-v",
+        "ON_ERROR_STOP=1",
+        "--single-transaction",
+        "--quiet",
+    ]
+    with sql_path.open("rb") as fh:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            stdin=fh,
+            stdout=subprocess.PIPE,
+        )
+    if result.returncode != 0:
+        sys.stderr.buffer.write(result.stdout)
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd, output=result.stdout
+        )
 
 
 def _run_pg_dump(container_id: str, db: dict, config: BaselineConfig) -> None:
@@ -154,34 +220,18 @@ def _build_db_settings(host: str, port: int, user: str, password: str, db: str) 
     }
 
 
-def rebuild_baseline(config: BaselineConfig) -> None:
-    """Spin a fresh Postgres testcontainer and rebuild the baseline.
+def _baseline_pipeline(config: BaselineConfig, *, load_prior: bool) -> None:
+    """Shared rebuild/update pipeline.
 
-    Steps:
-
-    1. Spin a fresh ``PostgresContainer(image=cfg.rebuild_image)``.
-    2. Validate ``pg_dump`` is present in the image (fail fast).
-    3. Swap ``connections.databases[cfg.database_alias]`` to point at
-       the testcontainer for the duration of migrate. Necessary
-       because data migrations commonly grab ``django.db.connection``
-       directly, ignoring the ``database=`` arg passed to
-       ``call_command("migrate", database=…)``.
-    4. ``migrate(interactive=False)``.
-    5. Freeze configured timestamp columns.
-    6. ``pg_dump`` inside the container.
-    7. Scrub PG-version-specific directives.
-    8. Write ``baseline.meta.json``.
-    9. Restore the original ``default`` connection in ``finally``.
-
-    Replaces ``connections.databases[alias]`` only for the ``alias``
-    configured by ``cfg.database_alias`` (default ``"default"``);
-    other aliases are untouched.
+    When ``load_prior`` is True, loads the existing ``baseline.sql``
+    into the container before ``migrate``. The caller is responsible
+    for verifying the file exists.
     """
     try:
         from testcontainers.postgres import PostgresContainer
     except ImportError as exc:
         raise RuntimeError(
-            "testcontainers is required for baseline_rebuild. "
+            "testcontainers is required for baseline rebuild/update. "
             "Reinstall django-pg-baseline (testcontainers[postgres] is a "
             "regular runtime dependency)."
         ) from exc
@@ -216,7 +266,7 @@ def rebuild_baseline(config: BaselineConfig) -> None:
             connections[alias].close()
         except Exception:
             logger.exception(
-                "Could not close prior connection for alias %s during rebuild",
+                "Could not close prior connection for alias %s during pipeline",
                 alias,
             )
         # Evict the cached DatabaseWrapper so the next access rebuilds
@@ -228,15 +278,24 @@ def rebuild_baseline(config: BaselineConfig) -> None:
         )
 
         try:
-            call_command("migrate", interactive=False, verbosity=1, database=alias)
-            _freeze_timestamps(alias, config)
-            connections[alias].close()
-
             db = {
                 "USER": _REBUILD_DB_USER,
                 "PASSWORD": _REBUILD_DB_PASSWORD,
                 "NAME": _REBUILD_DB_NAME,
             }
+            if load_prior:
+                # Seed the testcontainer with the prior dump. ``migrate``
+                # then sees existing django_migrations records and only
+                # applies the delta; ``post_migrate`` sees existing
+                # content_types/permissions via ``get_or_create`` and
+                # preserves their IDs. New rows for newly-introduced
+                # models append at the end of the sequence.
+                _load_baseline_into_container(container_id, db, config.sql_path)
+
+            call_command("migrate", interactive=False, verbosity=1, database=alias)
+            _freeze_timestamps(alias, config)
+            connections[alias].close()
+
             _run_pg_dump(container_id, db, config)
             _scrub_dump(config.sql_path)
             write_meta(config.meta_path)
@@ -245,12 +304,80 @@ def rebuild_baseline(config: BaselineConfig) -> None:
                 connections[alias].close()
             except Exception:
                 logger.exception(
-                    "Could not close connection for alias %s after rebuild",
+                    "Could not close connection for alias %s after pipeline",
                     alias,
                 )
             if hasattr(connections._connections, alias):
                 delattr(connections._connections, alias)
             connections.databases[alias] = original_alias_settings
+
+
+def rebuild_baseline(config: BaselineConfig) -> None:
+    """Spin a fresh Postgres testcontainer and rebuild the baseline from scratch.
+
+    Steps:
+
+    1. Spin a fresh ``PostgresContainer(image=cfg.rebuild_image)``.
+    2. Validate ``pg_dump`` is present in the image (fail fast).
+    3. Swap ``connections.databases[cfg.database_alias]`` to point at
+       the testcontainer for the duration of migrate. Necessary
+       because data migrations commonly grab ``django.db.connection``
+       directly, ignoring the ``database=`` arg passed to
+       ``call_command("migrate", database=…)``.
+    4. ``migrate(interactive=False)`` against an empty DB.
+    5. Freeze configured timestamp columns.
+    6. ``pg_dump`` inside the container.
+    7. Scrub PG-version-specific directives.
+    8. Write ``baseline.meta.json``.
+    9. Restore the original ``default`` connection in ``finally``.
+
+    Auto-increment IDs of permissions / content_types end up at
+    whatever values ``post_migrate`` happens to assign — typically
+    drifts between rebuilds, producing large diffs in ``baseline.sql``.
+    For routine refreshes after adding migrations, prefer
+    :func:`update_baseline` which preserves prior IDs.
+
+    Replaces ``connections.databases[alias]`` only for the ``alias``
+    configured by ``cfg.database_alias`` (default ``"default"``);
+    other aliases are untouched.
+    """
+    _baseline_pipeline(config, load_prior=False)
+
+
+def update_baseline(config: BaselineConfig) -> None:
+    """Update ``baseline.sql`` in place, preserving auto-increment IDs.
+
+    Loads the existing ``baseline.sql`` into a fresh testcontainer
+    *before* ``migrate``, so:
+
+    - ``django_migrations`` already records the migrations baked into
+      the prior dump; ``migrate`` applies only the delta added since.
+    - ``post_migrate`` fires for each app and runs
+      ``update_contenttypes`` / ``create_permissions``. Both are built
+      on ``get_or_create``, so existing content_type / permission rows
+      keep their IDs. Only genuinely-new rows (for models added in
+      the new migrations) get fresh sequential IDs at the end of each
+      table's sequence.
+    - All other auto-increment-bearing rows from the prior dump (e.g.
+      seed data inserted by `RunPython` ops) survive untouched, since
+      their migrations are recorded as already applied.
+
+    The result: rebuilds with no migration changes produce a
+    byte-identical ``baseline.sql`` (modulo the freeze-timestamp pass
+    on ``django_migrations``); rebuilds adding new migrations produce a
+    minimal diff confined to the actually-new rows.
+
+    Use this for routine maintenance after adding migrations. Use
+    :func:`rebuild_baseline` (full reset) when starting from scratch
+    or when the prior dump is no longer loadable (e.g. after a Django
+    or Postgres major version bump that broke the dump format).
+    """
+    if not config.sql_path.exists():
+        raise FileNotFoundError(
+            f"baseline_update requires an existing {config.sql_path}; "
+            f"run baseline_rebuild first to create it."
+        )
+    _baseline_pipeline(config, load_prior=True)
 
 
 def with_overrides(

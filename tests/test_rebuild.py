@@ -11,10 +11,12 @@ from django_pg_baseline import rebuild as rebuild_module
 from django_pg_baseline.conf import BaselineConfig
 from django_pg_baseline.rebuild import (
     _freeze_timestamps,
+    _load_baseline_into_container,
     _run_pg_dump,
     _scrub_dump,
     _validate_pg_dump_in_container,
     rebuild_baseline,
+    update_baseline,
     with_overrides,
 )
 
@@ -174,6 +176,75 @@ def test_rebuild_baseline_missing_testcontainers(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError, match="testcontainers is required"):
         rebuild_baseline(cfg)
+
+
+def test_load_baseline_into_container_streams_stdin(tmp_path, monkeypatch):
+    sql = tmp_path / "baseline.sql"
+    sql.write_text("CREATE TABLE foo();\n", encoding="utf-8")
+    db = {"USER": "postgres", "PASSWORD": "pw", "NAME": "baseline"}
+    captured = {}
+
+    def fake_run(cmd, check, stdin, stdout):
+        captured["cmd"] = cmd
+        captured["stdin_content"] = stdin.read()
+
+        class R:
+            returncode = 0
+            stdout = b""
+
+        return R()
+
+    monkeypatch.setattr(rebuild_module.subprocess, "run", fake_run)
+
+    _load_baseline_into_container("c123", db, sql)
+
+    assert captured["cmd"][0] == "docker"
+    assert "exec" in captured["cmd"]
+    assert "-i" in captured["cmd"]
+    assert "c123" in captured["cmd"]
+    assert "psql" in captured["cmd"]
+    assert "ON_ERROR_STOP=1" in captured["cmd"]
+    assert "--single-transaction" in captured["cmd"]
+    assert "PGPASSWORD=pw" in captured["cmd"]
+    assert captured["stdin_content"] == b"CREATE TABLE foo();\n"
+
+
+def test_load_baseline_into_container_raises_on_failure(tmp_path, monkeypatch):
+    sql = tmp_path / "baseline.sql"
+    sql.write_text("BROKEN;\n", encoding="utf-8")
+    db = {"USER": "postgres", "PASSWORD": "", "NAME": "baseline"}
+
+    def fake_run(cmd, check, stdin, stdout):
+        stdin.read()
+
+        class R:
+            returncode = 3
+            stdout = b"ERROR: syntax error\n"
+
+        return R()
+
+    monkeypatch.setattr(rebuild_module.subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        _load_baseline_into_container("c123", db, sql)
+
+
+def test_update_baseline_requires_existing_dump(tmp_path):
+    cfg = BaselineConfig(baseline_dir=tmp_path)
+    # No baseline.sql in tmp_path.
+    with pytest.raises(FileNotFoundError, match="run baseline_rebuild first"):
+        update_baseline(cfg)
+
+
+def test_update_baseline_missing_testcontainers(monkeypatch, tmp_path):
+    cfg = BaselineConfig(baseline_dir=tmp_path)
+    cfg.sql_path.write_text("-- prior baseline\n", encoding="utf-8")
+
+    monkeypatch.setitem(sys.modules, "testcontainers", None)
+    monkeypatch.setitem(sys.modules, "testcontainers.postgres", None)
+
+    with pytest.raises(RuntimeError, match="testcontainers is required"):
+        update_baseline(cfg)
 
 
 def test_with_overrides_returns_new_instance(tmp_path):

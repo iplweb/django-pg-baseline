@@ -12,12 +12,14 @@ from django_pg_baseline.conf import BaselineConfig
 from django_pg_baseline.management.commands import baseline_info as cmd_info
 from django_pg_baseline.management.commands import baseline_load as cmd_load
 from django_pg_baseline.management.commands import baseline_rebuild as cmd_rebuild
+from django_pg_baseline.management.commands import baseline_update as cmd_update
 
 
 def _patch_config(monkeypatch, cfg):
     monkeypatch.setattr(cmd_info, "get_config", lambda: cfg)
     monkeypatch.setattr(cmd_load, "get_config", lambda: cfg)
     monkeypatch.setattr(cmd_rebuild, "get_config", lambda: cfg)
+    monkeypatch.setattr(cmd_update, "get_config", lambda: cfg)
 
 
 def test_baseline_info_handles_missing_meta(tmp_path, monkeypatch, fake_sql_file):
@@ -195,3 +197,45 @@ def test_baseline_rebuild_baseline_dir_override(tmp_path, monkeypatch):
     other = tmp_path / "other"
     call_command("baseline_rebuild", "--baseline-dir", str(other), stdout=StringIO())
     assert calls[0].baseline_dir == other
+
+
+def test_baseline_update_invokes_update(tmp_baseline_dir, monkeypatch, fake_sql_file):
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    _patch_config(monkeypatch, cfg)
+
+    calls = []
+    monkeypatch.setattr(cmd_update, "update_baseline", lambda c: calls.append(c))
+
+    call_command("baseline_update", stdout=StringIO())
+    assert len(calls) == 1
+    assert calls[0].rebuild_image == cfg.rebuild_image
+    assert calls[0].baseline_dir == cfg.baseline_dir
+
+
+def test_baseline_update_errors_when_sql_missing(tmp_path, monkeypatch):
+    from django.core.management.base import CommandError
+
+    cfg = BaselineConfig(baseline_dir=tmp_path)
+    _patch_config(monkeypatch, cfg)
+
+    update_calls = []
+    monkeypatch.setattr(
+        cmd_update, "update_baseline", lambda c: update_calls.append(c)
+    )
+
+    with pytest.raises(CommandError, match="run `manage.py baseline_rebuild`"):
+        call_command("baseline_update", stdout=StringIO())
+    assert update_calls == []
+
+
+def test_baseline_update_image_override(tmp_baseline_dir, monkeypatch, fake_sql_file):
+    cfg = BaselineConfig(baseline_dir=tmp_baseline_dir)
+    _patch_config(monkeypatch, cfg)
+
+    calls = []
+    monkeypatch.setattr(cmd_update, "update_baseline", lambda c: calls.append(c))
+
+    call_command(
+        "baseline_update", "--image", "postgres:17", stdout=StringIO()
+    )
+    assert calls[0].rebuild_image == "postgres:17"

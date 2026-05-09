@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-09
+
+### Added
+
+- `baseline_update` management command and `rebuild.update_baseline()`
+  function. Loads the existing `baseline.sql` into the testcontainer
+  before `migrate`, so Django's `post_migrate` preserves existing
+  auto-increment IDs (permission / content_type rows) via
+  `get_or_create`. Routine refreshes after adding migrations now
+  produce minimal git diffs instead of ~1500–2000-line churn from
+  auth/contenttype ID drift. See README for the
+  `baseline_rebuild` vs `baseline_update` workflow.
+- `rebuild._load_baseline_into_container()` helper — streams a SQL
+  file into the testcontainer's PG via `docker exec -i ... psql`.
+
 ## [0.1.0] - 2026-05-08
 
 ### Added
@@ -37,5 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_django_pg_baseline_seeded` marker on `DATABASES['default']['TEST']`
   — explicit coordination flag with `pytest-testcontainers-django`.
 
-[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/iplweb/django-pg-baseline/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/iplweb/django-pg-baseline/releases/tag/v0.1.0

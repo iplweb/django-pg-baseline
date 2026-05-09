@@ -238,7 +238,45 @@ PG_BASELINE = {
 | --- | --- |
 | `baseline_load` | Load `baseline.sql` into the configured DB. Skips when `django_migrations` already exists, unless `--force`. |
 | `baseline_info` | Human summary: git SHA, PG version, sql/meta paths, plus per-app deltas. Always exits 0. |
-| `baseline_rebuild` | Regenerate `baseline.sql` + `baseline.meta.json`. Spins a `testcontainers` PG, runs `migrate`, freezes timestamps, runs in-container `pg_dump`, scrubs, writes meta. Flags: `--image`, `--baseline-dir`. |
+| `baseline_rebuild` | **Full rebuild from scratch.** Spins a `testcontainers` PG, runs `migrate` against an *empty* DB, freezes timestamps, runs in-container `pg_dump`, scrubs, writes meta. Auto-increment IDs (permissions, content_types) end up at whatever values `post_migrate` assigns this run — typically drifts between rebuilds, producing large diffs in `baseline.sql`. Use when starting fresh or when the prior dump is no longer loadable. Flags: `--image`, `--baseline-dir`. |
+| `baseline_update` | **Incremental update preserving IDs.** Same as `baseline_rebuild`, but loads the existing `baseline.sql` into the testcontainer *before* `migrate`. Django's `post_migrate` then sees existing content_types/permissions via `get_or_create` and keeps their IDs; only genuinely-new rows (for models added by new migrations) get fresh sequential IDs. Use this for routine refreshes after adding migrations — produces minimal git diffs. Errors out when no prior `baseline.sql` exists; run `baseline_rebuild` first. Flags: `--image`, `--baseline-dir`. |
+
+### `baseline_rebuild` vs `baseline_update`
+
+The two commands solve different problems:
+
+- **`baseline_rebuild`** answers the question "what does a fresh
+  database look like after running every migration?" Reproducible from
+  source code alone. The auto-increment IDs are an implementation
+  detail of `post_migrate`'s iteration order; they are stable *within*
+  one rebuild but typically shift between rebuilds (different Python
+  hash seed, different app-registry traversal, third-party app
+  reordering). When this happens, `git diff baseline.sql` shows ~1500–
+  2000 lines of churn for the auth/contenttype tables even when no
+  models actually changed, drowning the meaningful diff.
+
+- **`baseline_update`** answers the question "what changes when I
+  apply only the new migrations on top of the prior baseline?" The
+  prior dump is loaded first, so `django_migrations` already records
+  every migration baked into it; `migrate` applies only the delta.
+  Existing permission/content_type rows keep their IDs (Django's
+  `update_contenttypes` and `create_permissions` use `get_or_create`),
+  and any FK references to them in other dump rows stay valid. New
+  rows for newly-introduced models append at the end of the sequence.
+  Net effect: rebuilds with no migration changes produce a
+  byte-identical `baseline.sql` (modulo the freeze-timestamp pass);
+  rebuilds adding migrations produce a minimal diff confined to the
+  actual changes.
+
+Recommended workflow: use `baseline_update` for routine refreshes
+after `makemigrations`. Reach for `baseline_rebuild` only when you
+genuinely want a clean slate (e.g. you've removed a model and want
+its content_type/permission rows pruned, or a Django/Postgres major
+upgrade made the prior dump unloadable).
+
+The two commands operate on the same `baseline.sql` artifact; nothing
+in the file format distinguishes one from the other. The choice is
+purely about the *generation strategy*.
 
 ## Pytest plugin (alternative to `INSTALLED_APPS`)
 
