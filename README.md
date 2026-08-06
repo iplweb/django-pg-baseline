@@ -3,7 +3,7 @@
 [![tests](https://github.com/iplweb/django-pg-baseline/actions/workflows/tests.yml/badge.svg)](https://github.com/iplweb/django-pg-baseline/actions/workflows/tests.yml)
 [![PyPI version](https://img.shields.io/pypi/v/django-pg-baseline.svg)](https://pypi.org/project/django-pg-baseline/)
 [![Python versions](https://img.shields.io/pypi/pyversions/django-pg-baseline.svg)](https://pypi.org/project/django-pg-baseline/)
-[![Django versions](https://img.shields.io/badge/Django-5.0%20%7C%205.1%20%7C%205.2-blue.svg)](https://pypi.org/project/django-pg-baseline/)
+[![Django versions](https://img.shields.io/badge/Django-5.0%20%7C%205.1%20%7C%205.2%20%7C%206.1-blue.svg)](https://pypi.org/project/django-pg-baseline/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > Manage a baseline `pg_dump` for Django test databases — turn N-minute
@@ -352,9 +352,14 @@ being in the baseline.
 | 5.0     | ✓    | ✓    | ✓    | —    | EOL Apr 2025 — supported on a best-effort basis |
 | 5.1     | ✓    | ✓    | ✓    | ✓    | EOL Dec 2025 — supported on a best-effort basis |
 | 5.2 LTS | ✓    | ✓    | ✓    | ✓    | Active LTS (extended support to Apr 2028) |
+| 6.1     | —    | —    | ✓    | ✓    | Current release — Django 6.x requires Python >= 3.12 |
 
 Django 4.2 is out of scope (LTS goes EOL in April 2026 — the project
 targets current Django).
+
+Django 6.0 is not in the CI matrix: this project went straight from
+5.2 to 6.1. It very likely works (nothing here touches the APIs 6.0
+changed), but it is untested, so it is not claimed as supported.
 
 ### PostgreSQL
 

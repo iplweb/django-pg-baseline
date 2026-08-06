@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Support for Django 6.1. Added to the CI matrix (Python 3.12 / 3.13
+  only — Django 6.x requires Python >= 3.12) and to the PyPI
+  classifiers. No source changes were needed.
+
 ## [0.2.0] - 2026-05-09
 
 ### Added

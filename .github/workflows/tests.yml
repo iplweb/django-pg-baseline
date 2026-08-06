@@ -47,8 +47,12 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.10", "3.13"]
-        django: ["5.1", "5.2"]
+        django: ["5.1", "5.2", "6.1"]
         driver: ["psycopg2-binary", "psycopg[binary]>=3"]
+        exclude:
+          # Django 6.x requires Python >= 3.12.
+          - python: "3.10"
+            django: "6.1"
         include:
           - push-only: true
             python: "3.11"
@@ -62,6 +66,10 @@ jobs:
             python: "3.12"
             django: "5.2"
             driver: "psycopg[binary]>=3"
+          - push-only: true
+            python: "3.12"
+            django: "6.1"
+            driver: "psycopg2-binary"
 
     steps:
       - uses: actions/checkout@v6
