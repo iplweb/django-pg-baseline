@@ -219,9 +219,7 @@ def test_baseline_update_errors_when_sql_missing(tmp_path, monkeypatch):
     _patch_config(monkeypatch, cfg)
 
     update_calls = []
-    monkeypatch.setattr(
-        cmd_update, "update_baseline", lambda c: update_calls.append(c)
-    )
+    monkeypatch.setattr(cmd_update, "update_baseline", lambda c: update_calls.append(c))
 
     with pytest.raises(CommandError, match="run `manage.py baseline_rebuild`"):
         call_command("baseline_update", stdout=StringIO())
@@ -235,7 +233,5 @@ def test_baseline_update_image_override(tmp_baseline_dir, monkeypatch, fake_sql_
     calls = []
     monkeypatch.setattr(cmd_update, "update_baseline", lambda c: calls.append(c))
 
-    call_command(
-        "baseline_update", "--image", "postgres:17", stdout=StringIO()
-    )
+    call_command("baseline_update", "--image", "postgres:17", stdout=StringIO())
     assert calls[0].rebuild_image == "postgres:17"

@@ -12,6 +12,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Single source of truth for lint/format: .pre-commit-config.yaml.
+  # CI runs the very same hooks (and therefore the very same pinned ruff)
+  # that run locally on commit, so CI can never disagree with pre-commit
+  # just because a new ruff was released. Bumping the version is a single
+  # `pre-commit autoupdate` in one file.
+  lint:
+    name: lint (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Cache pre-commit hook environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit
+        run: |
+          python -m pip install --upgrade --quiet pip
+          python -m pip install --quiet pre-commit
+          pre-commit run --all-files --show-diff-on-failure --color=always
+
   unit:
     name: unit (py${{ matrix.python }} / dj${{ matrix.django }} / ${{ matrix.driver }})
     runs-on: ubuntu-latest
@@ -62,12 +90,6 @@ jobs:
           # currently installed, then reinstall exactly the matrix one.
           python -m pip uninstall -y -q psycopg psycopg-binary psycopg2 psycopg2-binary 2>/dev/null || true
           python -m pip install --quiet "${DRIVER}"
-
-      - name: Lint
-        run: |
-          python -m pip install --quiet ruff
-          ruff check src/ tests/
-          ruff format --check src/ tests/
 
       - name: Unit tests
         run: pytest -v

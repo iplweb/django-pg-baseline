@@ -92,9 +92,7 @@ def _validate_pg_dump_in_container(container_id: str) -> None:
         ) from exc
 
 
-def _load_baseline_into_container(
-    container_id: str, db: dict, sql_path: Path
-) -> None:
+def _load_baseline_into_container(container_id: str, db: dict, sql_path: Path) -> None:
     """Stream a baseline SQL file into the container's PG via ``psql`` stdin.
 
     Used by :func:`update_baseline` to seed the testcontainer with the
