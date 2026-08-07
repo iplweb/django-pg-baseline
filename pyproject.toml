@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "django-pg-baseline"
-version = "0.2.0"
+version = "0.3.1"
 description = "Manage a baseline pg_dump for Django test databases — turn N-minute migrate boots into a few-second psql import."
 readme = "README.md"
 license = { text = "MIT" }

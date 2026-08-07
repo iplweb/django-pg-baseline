@@ -7,11 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-07
+
 ### Added
 
 - Support for Django 6.1. Added to the CI matrix (Python 3.12 / 3.13
   only — Django 6.x requires Python >= 3.12) and to the PyPI
   classifiers. No source changes were needed.
+
+### Fixed
+
+- Version metadata drift: `pyproject.toml` declared `0.2.0` and
+  `django_pg_baseline.__version__` declared `0.1.0`, while 0.3.0 was
+  already published on PyPI. Both now read `0.3.1` and match the
+  released artifact.
 
 ## [0.2.0] - 2026-05-09
 
@@ -58,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_django_pg_baseline_seeded` marker on `DATABASES['default']['TEST']`
   — explicit coordination flag with `pytest-testcontainers-django`.
 
-[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/iplweb/django-pg-baseline/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/iplweb/django-pg-baseline/releases/tag/v0.1.0

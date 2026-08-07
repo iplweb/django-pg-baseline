@@ -21,7 +21,7 @@ import os
 from pathlib import Path
 
 __all__ = ["get_baseline_path"]
-__version__ = "0.1.0"
+__version__ = "0.3.1"
 
 
 def get_baseline_path(alias: str = "default") -> Path | None:
