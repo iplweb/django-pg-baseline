@@ -226,7 +226,7 @@ def _baseline_pipeline(config: BaselineConfig, *, load_prior: bool) -> None:
     for verifying the file exists.
     """
     try:
-        from testcontainers.postgres import PostgresContainer
+        from testcontainers.community.postgres import PostgresContainer
     except ImportError as exc:
         raise RuntimeError(
             "testcontainers is required for baseline rebuild/update. "

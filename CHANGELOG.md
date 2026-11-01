@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-01
+
+### Changed
+
+- Import container classes from `testcontainers.community.*`. The top-level
+  `testcontainers.postgres` and `testcontainers.redis` modules are deprecated
+  shims since testcontainers 4.15.0, which is now the minimum supported version.
+
 ## [0.3.1] - 2026-08-07
 
 ### Added
@@ -67,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_django_pg_baseline_seeded` marker on `DATABASES['default']['TEST']`
   — explicit coordination flag with `pytest-testcontainers-django`.
 
-[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/iplweb/django-pg-baseline/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/iplweb/django-pg-baseline/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/iplweb/django-pg-baseline/compare/v0.2.0...v0.3.1
 [0.2.0]: https://github.com/iplweb/django-pg-baseline/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/iplweb/django-pg-baseline/releases/tag/v0.1.0

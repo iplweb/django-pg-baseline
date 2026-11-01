@@ -172,7 +172,7 @@ def test_rebuild_baseline_missing_testcontainers(monkeypatch, tmp_path):
     cfg = BaselineConfig(baseline_dir=tmp_path)
 
     monkeypatch.setitem(sys.modules, "testcontainers", None)
-    monkeypatch.setitem(sys.modules, "testcontainers.postgres", None)
+    monkeypatch.setitem(sys.modules, "testcontainers.community.postgres", None)
 
     with pytest.raises(RuntimeError, match="testcontainers is required"):
         rebuild_baseline(cfg)
@@ -241,7 +241,7 @@ def test_update_baseline_missing_testcontainers(monkeypatch, tmp_path):
     cfg.sql_path.write_text("-- prior baseline\n", encoding="utf-8")
 
     monkeypatch.setitem(sys.modules, "testcontainers", None)
-    monkeypatch.setitem(sys.modules, "testcontainers.postgres", None)
+    monkeypatch.setitem(sys.modules, "testcontainers.community.postgres", None)
 
     with pytest.raises(RuntimeError, match="testcontainers is required"):
         update_baseline(cfg)
